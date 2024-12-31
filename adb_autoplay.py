@@ -23,6 +23,7 @@ class AutoEatventure:
         self.current_cv2_sc = None
         self.current_cv2_sc_grayscale = None
         self.current_cv2_sc_bgr2hsv = None
+        self.boxtemplate = None
         self.matching_screenshots_path = {
             'notification': './matching_screenshots/notification.png',
             'first_lemondae_stand_open': './matching_screenshots/first_lemonade_stand_open.png',
@@ -323,14 +324,16 @@ class AutoEatventure:
         return self.is_image_template_matching(self.matching_templates_cv2['ads_crosses']['cross1'])
 
     def is_having_no_boost_indicator(self):
-        x1, y1 = 408, 274
-        x2, y2 = 466, 274
+        x1, y1 = 418, 221
+        x2, y2 = 490, 260
         start = {'x': x1, 'y': y1}
         end = {'x': x2, 'y': y2}
-        color_to_check = [42, 192, 255]
+        color_to_check = [130, 226, 250]
         # here we checking if yellow color is present in pixels where boost x2 is written
         # if yellow color not present it means is having no boost indicator
-        return not self.is_pixel_color_present_between_coordinates(start, end, color_to_check)
+        isexists = not self.is_pixel_color_present_between_coordinates(start, end, color_to_check)
+        print(f"CHECKED FOR COLOR EXİSTANCE {isexists}")
+        return isexists
 
     def is_having_no_boost_indicator_2x(self):
         return self.is_image_template_matching(self.matching_templates_cv2['no_boost_indicator_2x'], 0.92)
@@ -353,6 +356,7 @@ class AutoEatventure:
         # template = self.convert_to_binary(
         #     self.matching_templates_cv2['box']['grayscale'], threshold=150)
         screenshot = self.apply_box_mask(self.current_cv2_sc)
+
         template = self.apply_box_mask(
             self.matching_templates_cv2['box']['simple'])
         # hsv_sc = cv2.cvtColor(screenshot, cv2.COLOR_BGR2HSV)
@@ -421,7 +425,7 @@ class AutoEatventure:
             time.sleep(2)
             print('Now claiming')
             self.click(redeem_button_coords)
-            time.sleep(5)
+            time.sleep(20)
             self.start_app()
             time.sleep(2)
         return
@@ -464,11 +468,11 @@ class AutoEatventure:
         }
         time.sleep(1)
         with Timer("Running full boost ads"):
-            for i in range(12):
+            for i in range(1):
                 print('click ad button')
                 self.click(btn_coords)
                 # time.sleep(60)
-                time.sleep(5)
+                time.sleep(30)
                 self.start_app()
                 print('app started')
                 time.sleep(5)
@@ -681,7 +685,7 @@ class AutoEatventure:
                 self.capture_screenshot()
 
             # check for investor
-            if count % 3 == 0:
+            if count % 1 == 0:
                 with Timer("Redeem investor"):
                     self.redeem_investor()
 
@@ -695,10 +699,10 @@ class AutoEatventure:
                         time.sleep(2)
                     
                     # a quick fix for boost but will run multiple times in many scenarios
-                    if self.is_having_no_boost_indicator_2x():
-                        print('running ads for 2x users')
-                        self.run_full_boost_ads()
-                        time.sleep(2)
+                    # if self.is_having_no_boost_indicator_2x():
+                    #     print('running ads for 2x users')
+                    #     self.run_full_boost_ads()
+                    #     time.sleep(2)
 
 
             # maind upgrades
@@ -713,7 +717,7 @@ class AutoEatventure:
                         self.do_upgrades()
                     self.capture_screenshot()
 
-            if count == 1 or count % 2 == 0:
+            if count % 1 == 0:
                 with Timer("Finding boxes"):
                     # boxes find and click
                     print('finding boxes')
@@ -799,12 +803,13 @@ class Timer:
         print(f"{self.name} elapsed time: {elapsed_time} seconds\n")
 
 
-# start the game app.
-dev = AutoEatventure()
-dev.start_app()
+if __name__ == "__main__":
+    # start the game app.
+    dev = AutoEatventure()
+    dev.start_app()
 
-# to check if game is playable.
-dev.init_game()
+    # to check if game is playable.
+    dev.init_game()
 
-# MAIN LOGIC
-dev.start_playing_game()
+    # MAIN LOGIC
+    dev.start_playing_game()

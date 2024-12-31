@@ -2,3 +2,5 @@
 .vscode
 *__pycache__
 *.AppImage
+.idea
+.venv
