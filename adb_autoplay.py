@@ -33,6 +33,7 @@ class AutoEatventure:
             'single_upgrade': './matching_screenshots/single_upgrade.png',
             'box': './matching_screenshots/box.png',
             'box2': './matching_screenshots/box2.png',
+            'box3': './matching_screenshots/box3.png',
             'buy_better_food_icon': './matching_screenshots/buy_better_food_icon.png',
             'buy_better_food_button': './matching_screenshots/buy_better_food_button.png',
             'go_next_level': './matching_screenshots/go_next_level_icon.png',
@@ -99,11 +100,13 @@ class AutoEatventure:
         """In memory capture screenshot
         """
         # pilimg = self.device.screenshot()
-        adb_command = f'adb -s {self.device.serial} shell screencap -p'
-        output = subprocess.check_output(adb_command.split())
+        
+        pipe = subprocess.Popen("adb shell screencap -p",
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE, shell=True)
+        image_bytes = pipe.stdout.read().replace(b'\r\n', b'\n')
 
-        # Convert the output to a PIL Image object
-        pilimg = Image.open(io.BytesIO(output))
+        pilimg = Image.open(io.BytesIO(image_bytes))
         pilimg.load()
         pilimg = pilimg.convert("RGB")
 
@@ -116,6 +119,9 @@ class AutoEatventure:
             open_cv_image, cv2.COLOR_BGR2GRAY)
         self.current_cv2_sc_bgr2hsv = cv2.cvtColor(
             open_cv_image, cv2.COLOR_BGR2HSV)
+        cv2.imwrite("./captured_screenshots_on_the_fly/screenshot_current.png", self.current_cv2_sc)
+        cv2.imwrite("./captured_screenshots_on_the_fly/screenshot_current_grayscale.png", self.current_cv2_sc_grayscale)
+        cv2.imwrite("./captured_screenshots_on_the_fly/screenshot_current_bgr2hsv.png", self.current_cv2_sc_bgr2hsv)
         return
 
     def find_template(self, image, template, threshold=0.8):
@@ -171,8 +177,7 @@ class AutoEatventure:
     def is_image_template_matching(self, template_cv_imgs: dict, threshold=0.8):
         hsv_sc = self.current_cv2_sc_bgr2hsv
         hsv_template = template_cv_imgs['bgr2hsv']
-        matched_coordinates = self.find_template(
-            hsv_sc, hsv_template, threshold=threshold)
+        matched_coordinates = self.find_template(hsv_sc, hsv_template, threshold=threshold)
         if matched_coordinates:
             return True
         return False
@@ -323,14 +328,10 @@ class AutoEatventure:
     def is_having_ad_cross(self):
         return self.is_image_template_matching(self.matching_templates_cv2['ads_crosses']['cross1'])
 
-    def is_having_no_boost_indicator(self):
-        x1, y1 = 418, 221
-        x2, y2 = 490, 260
-        start = {'x': x1, 'y': y1}
-        end = {'x': x2, 'y': y2}
-        color_to_check = [130, 226, 250]
-        # here we checking if yellow color is present in pixels where boost x2 is written
-        # if yellow color not present it means is having no boost indicator
+    def is_having_boost_indicator(self):
+        start = {'x': 640, 'y': 3060}
+        end = {'x': 800, 'y': 3100}
+        color_to_check = [0, 0, 0]
         isexists = not self.is_pixel_color_present_between_coordinates(start, end, color_to_check)
         print(f"CHECKED FOR COLOR EXİSTANCE {isexists}")
         return isexists
@@ -351,29 +352,42 @@ class AutoEatventure:
         return self.is_image_template_matching(self.matching_templates_cv2['chest_icon'])
 
     def get_all_boxes_locations(self):
-        # screenshot = self.convert_to_binary(
-        #     self.current_cv2_sc_grayscale, threshold=150)
-        # template = self.convert_to_binary(
-        #     self.matching_templates_cv2['box']['grayscale'], threshold=150)
-        screenshot = self.apply_box_mask(self.current_cv2_sc)
-
-        template = self.apply_box_mask(
-            self.matching_templates_cv2['box']['simple'])
-        # hsv_sc = cv2.cvtColor(screenshot, cv2.COLOR_BGR2HSV)
-        # hsv_template = cv2.cvtColor(template, cv2.COLOR_BGR2HSV)
-        # matched_coordinates = self.find_all_templates(hsv_sc, hsv_template)
-        matched_coordinates = self.find_all_templates(
-            screenshot, template, end=False)
-        if len(matched_coordinates) != 0:
-            return matched_coordinates
-
-        # this is for a little different box
-        template = self.apply_box_mask(
-            self.matching_templates_cv2['box2']['simple'])
-        matched_coordinates = self.find_all_templates(
-            screenshot, template, end=False)
-
+        box_templates = [self.matching_templates_cv2['box']['grayscale'], self.matching_templates_cv2['box2']['grayscale'], self.matching_templates_cv2['box3']['grayscale']]
+        matched_coordinates = []
+        for box_template in box_templates:
+            match_locations = self.find_box_template(self.current_cv2_sc, box_template)
+            if match_locations and len(match_locations) > 0:
+                for match_location in match_locations:
+                    match_location_tmp = (match_location[0]+60, match_location[1]+60)
+                    matched_coordinates.append(match_location_tmp)
         return matched_coordinates
+    
+    def find_box_template(self, image, template, threshold=0.8):
+        if len(image.shape) == 3:image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:image_gray = image
+
+        if len(template.shape) == 3:template_gray = cv2.cvtColor(template, cv2.COLOR_BGR2GRAY)
+        else:template_gray = template
+
+        result = cv2.matchTemplate(image_gray, template_gray, cv2.TM_CCOEFF_NORMED)
+        
+        locations = np.where(result >= threshold)
+        matches = list(zip(*locations[::-1]))
+        
+        if len(matches) == 0:
+            return None
+        coords = np.array(matches)
+        dbscan = DBSCAN(eps=10, min_samples=5)
+        dbscan.fit(coords)
+        centroids = []
+        for cluster_label in set(dbscan.labels_):
+            if cluster_label != -1:  # Ignore noise points (label -1)
+                cluster_coords = coords[dbscan.labels_ == cluster_label]
+                centroid = np.mean(cluster_coords, axis=0)
+                centroids.append(centroid)
+
+        centroids = [c.astype(int).tolist() for c in centroids]
+        return centroids
 
     def get_all_better_food_icon_locations(self):
         screenshot = self.current_cv2_sc_grayscale
@@ -441,7 +455,7 @@ class AutoEatventure:
     def click(self, coords):
         if type(coords) is dict:
             self.device.shell(f"input tap {coords['x']} {coords['y']}")
-        if type(coords) is list:
+        elif type(coords) is list or type(coords) is tuple:
             self.device.shell(f"input tap {coords[0]} {coords[1]}")
         return
 
@@ -564,6 +578,7 @@ class AutoEatventure:
     def open_boxes(self):
         coords = self.get_all_boxes_locations()
         for c in coords:
+            print(f"Clicking box at {c}")
             self.click(c)
             time.sleep(0.2)
         return
@@ -689,21 +704,16 @@ class AutoEatventure:
                 with Timer("Redeem investor"):
                     self.redeem_investor()
 
-            # check for ads
+            # check for boost
             if count == 1 or count % 100 == 0:  # every 100th iteration
                 with Timer("Running full boost ads"):
                     print('Checking for boost')
-                    if self.is_having_no_boost_indicator(): # this is for users didn't buy 2x permanent boost
+                    if not self.is_having_boost_indicator():
                         print('running ads')
                         self.run_full_boost_ads()
                         time.sleep(2)
-                    
-                    # a quick fix for boost but will run multiple times in many scenarios
-                    # if self.is_having_no_boost_indicator_2x():
-                    #     print('running ads for 2x users')
-                    #     self.run_full_boost_ads()
-                    #     time.sleep(2)
-
+                    else:
+                        print('Boost already active skipping')
 
             # maind upgrades
             # upgrade click
